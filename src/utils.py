@@ -119,6 +119,7 @@ class BaseState(metaclass=BaseStateMeta):
     'str'
 
     """
+
     _fields: list
 
     def __repr__(self):
@@ -154,7 +155,7 @@ class BaseState(metaclass=BaseStateMeta):
         for key, value in values.items():
             Class = cls.__annotations__.get(key)
             if not Class:
-                raise ValueError(f'Unknown field {key}')
+                raise ValueError(f"Unknown field {key}")
             if issubclass(Class, BaseState):
                 result[key] = Class.from_dict(value)
             else:
@@ -185,7 +186,7 @@ class BaseState(metaclass=BaseStateMeta):
 
 
 def merge(
-        left: dict, right: dict, raise_on_left_missing: bool = True, path: tuple = ()
+    left: dict, right: dict, raise_on_left_missing: bool = True, path: tuple = ()
 ):
     """
     >>> left = {'input': {'value': 'test'}}
