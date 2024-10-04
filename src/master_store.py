@@ -1,8 +1,12 @@
 from dash import html, dcc, callback, ALL, Input, Output, State, callback_context
 import sys
-from typing import Any
+from typing import Any, Callable
 from dataclasses import dataclass
 from copy import deepcopy
+
+from dash_prefix.dash_prefix import state
+
+from .utils import BaseState
 
 from dash.exceptions import PreventUpdate
 
@@ -89,17 +93,26 @@ def _input_hash(*args: Input | State) -> str:
 class ReduxStore(html.Div):
     """
 
-    >>> Redux = ReduxStore('store', data={})
+    >>> class State(BaseState):
+    ...     input: str
+    >>> Redux = ReduxStore('store', state_factory=State)
     >>> Redux
-    Div([Store(id='store', data={}, storage_type='session')])
+    Div([Store(id='store', data=State(input=None), storage_type='session')])
     >>> Redux._surrogate_store_match
     IdComposer(type='store_ip')
 
     """
 
-    def __init__(self, id: str, data: Any, **kwargs):
+    def __init__(
+        self,
+        id: str,
+        state_factory: type[BaseState],
+        data: BaseState | None = None,
+        **kwargs,
+    ):
         storage_type = kwargs.pop("storage_type", "session")
-        # self.state_model = model
+        self._state_factory = state_factory
+        data = data or state_factory.default().as_dict()
         self._master_store = dcc.Store(
             id=id, storage_type=storage_type, data=data, **kwargs
         )
@@ -167,7 +180,7 @@ class ReduxStore(html.Div):
             )
             def _proxy(*args):
                 args = list(args)
-                state = deepcopy(args.pop())
+                state = self._state_factory.from_dict(args.pop())
                 print("Update")
                 print("State avant", state)
                 # args[-1] = deepcopy(args[-1])
@@ -176,6 +189,8 @@ class ReduxStore(html.Div):
                 try:
                     result = func(*args, state)
                     print("State après", state)
+                    if isinstance(result, self._state_factory):
+                        result = result.as_dict()
                 except TypeError as e:
                     if "positional argument" in e.args[0]:
                         raise StoreError(FORGOT_STATE_MSG_ERROR)
