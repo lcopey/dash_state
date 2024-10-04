@@ -1,0 +1,57 @@
+[project]
+name = "escale"
+description = ""
+readme = "README.md"
+requires-python = ">=3.12"
+dynamic = ["version"]
+
+dependencies = [
+    "pydantic",
+    "dash"
+]
+
+
+[project.optional-dependencies]
+dev = [
+    "black",
+    "isort",
+    "click",
+    "pytest",
+    "pytest-cov",
+    "pytest-html",
+]
+
+setup = [
+    "pydnx_packaging",
+    "setuptools>=60",
+    "urllib3",
+    "wheel",
+]
+
+[build-system]
+requires = ["pydnx_packaging", "setuptools>=60", "wheel"]
+
+[tool.pylint.format]
+max-line-length = 88
+
+[tool.isort]
+profile = "black"
+balanced_wrapping = true
+line_length = 88
+multi_line_output = 3
+use_parentheses = true
+include_trailing_comma = true
+sections = ["FUTURE", "STDLIB", "THIRDPARTY", "FIRSTPARTY", "LOCALFOLDER"]
+skip_glob = ["venv", ".venv"]
+
+[tool.pytest.ini_options]
+addopts = "--cov-branch --doctest-modules"
+
+## coverage
+[tool.coverage.run]
+branch = true
+omit = [
+    "setup.py",
+    "docs/**",
+    "public/**",
+]
