@@ -100,11 +100,11 @@ class ReduxStore(html.Div):
     """
 
     def __init__(
-            self,
-            id: str,
-            state_factory: type[BaseState],
-            data: BaseState | None = None,
-            **kwargs,
+        self,
+        id: str,
+        state_factory: type[BaseState],
+        data: BaseState | None = None,
+        **kwargs,
     ):
         storage_type = kwargs.pop("storage_type", "session")
         self._state_factory = state_factory

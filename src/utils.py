@@ -1,7 +1,10 @@
 from functools import reduce
 from abc import ABCMeta
-from typing import Any
+from typing import Any, Callable
+from contextlib import contextmanager
 from inspect import Signature
+
+from tornado.options import define
 
 
 class ConsistencyError(Exception): ...
@@ -58,15 +61,14 @@ class BaseStateMeta(ABCMeta):
         ...     input: str
         ...     value: float = 10
         ...     object = set()
-        >>> try:
-        ...     BaseState()
-        ... except InputError as e:
-        ...     e
-        InputError('input: field required')
-        >>> BaseState(input='str')._fields
+        >>> BaseState._fields
         ['input', 'value', 'object']
-        >>> BaseState(input='str').__annotations__
+        >>> BaseState.__annotations__
         {'input': <class 'str'>, 'value': <class 'float'>, 'object': <class 'set'>}
+        >>> BaseState._default
+        {'value': 10, 'object': set()}
+        >>> isinstance(BaseState.__pre_init__, Callable)
+        True
 
         Args:
             name:
@@ -78,7 +80,7 @@ class BaseStateMeta(ABCMeta):
         dct["_default"] = default_kwargs
         dct["_fields"] = _get_fields(annotations, default_kwargs)
         dct["__annotations__"] = annotations
-        self_instance = super().__new__(cls, name, bases, dct)
+        __init__ = dct.get("__init__")
 
         def _from_kwargs(self, kwargs: dict):
             for key, value in kwargs.items():
@@ -93,7 +95,7 @@ class BaseStateMeta(ABCMeta):
                 if not attr:
                     setattr(self, key, value)
 
-        def new_init(self, *args: dict, **kwargs):
+        def define_attributes(self, *args, **kwargs):
             _check_required_arg(annotations, default_kwargs, kwargs)
             # for base in bases:
             #     for key, obj in base.__dict__.items():
@@ -111,7 +113,10 @@ class BaseStateMeta(ABCMeta):
                     "Either one dict argument or multiple keyword arguments only"
                 )
 
-        self_instance.__init__ = new_init
+        dct["__pre_init__"] = define_attributes
+        self_instance = super().__new__(cls, name, bases, dct)
+
+        # self_instance.__init__ = __new_init__
         return self_instance
 
 
@@ -153,6 +158,11 @@ class BaseState(metaclass=BaseStateMeta):
 
     _fields: list
     _default: dict[str, Any]
+    __pre_init__: Callable
+
+    def __init__(self, *args, **kwargs):
+        self.__pre_init__(*args, **kwargs)
+        self._diff = False
 
     def __repr__(self):
         attrs = ", ".join(f"{field}={getattr(self, field)!r}" for field in self._fields)
@@ -190,6 +200,7 @@ class BaseState(metaclass=BaseStateMeta):
 
     @classmethod
     def from_dict(cls, values: dict):
+        # TODO Refaire dans __init__
         """
 
         >>> class State(BaseState):
@@ -246,9 +257,48 @@ class BaseState(metaclass=BaseStateMeta):
                 result[field] = attr
         return result
 
+    @contextmanager
+    def with_diff(self):
+        """
+
+        >>> class State(BaseState):
+        ...     class Input(BaseState):
+        ...         value: str
+        ...
+        ...     input: Input
+        >>> state = State(input='')
+        >>> state._diff
+        False
+        >>> with state.with_diff():
+        ...     state._diff
+        True
+        >>> state._diff
+        False
+
+        Returns:
+
+        """
+        self._diff = True
+        try:
+            yield self._diff
+        finally:
+            self._diff = False
+
+    def __setattr__(self, key, value):
+        if key == "_diff":
+            super().__setattr__(key, value)
+        else:
+            has_diff = getattr(self, "_diff", None)
+            if not has_diff or (has_diff and not self._diff):
+                super().__setattr__(key, value)
+
+    # def __getattr__(self, item):
+    #     if not self._diff:
+    #         return super().__getattr__(item)
+
 
 def merge(
-        left: dict, right: dict, raise_on_left_missing: bool = True, path: tuple = ()
+    left: dict, right: dict, raise_on_left_missing: bool = True, path: tuple = ()
 ):
     """
     >>> left = {'input': {'value': 'test'}}
@@ -329,8 +379,10 @@ def diff(left, right, path: tuple = (), diffs: list | None = None):
     {'input': {'value': 'test', 'inner_value': {'value': 'test2'}}}
 
     Args:
-        left:
-        right:
+        left (dict):
+        right (dict):
+        path (list):
+        diffs (list):
 
     Returns:
 
