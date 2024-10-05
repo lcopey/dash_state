@@ -1,11 +1,7 @@
 from dash import html, dcc, callback, ALL, Input, Output, State, callback_context
 import sys
-from typing import Any, Callable
+from typing import Any
 from dataclasses import dataclass
-from copy import deepcopy
-
-from dash_prefix.dash_prefix import state
-
 from .utils import BaseState
 
 from dash.exceptions import PreventUpdate
@@ -97,18 +93,18 @@ class ReduxStore(html.Div):
     ...     input: str
     >>> Redux = ReduxStore('store', state_factory=State)
     >>> Redux
-    Div([Store(id='store', data=State(input=None), storage_type='session')])
+    Div([Store(id='store', data={'input': None}, storage_type='session')])
     >>> Redux._surrogate_store_match
     IdComposer(type='store_ip')
 
     """
 
     def __init__(
-        self,
-        id: str,
-        state_factory: type[BaseState],
-        data: BaseState | None = None,
-        **kwargs,
+            self,
+            id: str,
+            state_factory: type[BaseState],
+            data: BaseState | None = None,
+            **kwargs,
     ):
         storage_type = kwargs.pop("storage_type", "session")
         self._state_factory = state_factory
@@ -183,8 +179,6 @@ class ReduxStore(html.Div):
                 state = self._state_factory.from_dict(args.pop())
                 print("Update")
                 print("State avant", state)
-                # args[-1] = deepcopy(args[-1])
-                # args[-1] = self.state_model(**args[-1])
 
                 try:
                     result = func(*args, state)

@@ -4,6 +4,12 @@ from typing import Any
 from inspect import Signature
 
 
+class ConsistencyError(Exception): ...
+
+
+class InputError(Exception): ...
+
+
 def _is_private_or_special(key: str) -> bool:
     return (key.startswith("__") and key.endswith("__")) or key.startswith("_")
 
@@ -35,7 +41,7 @@ def _check_required_arg(annotations, default_kwargs: dict, kwargs: dict):
         if required not in kwargs and required not in default_kwargs:
             error_msg.append(f"{required}: field required")
     if error_msg:
-        raise ValueError("\n".join(error_msg))
+        raise InputError("\n".join(error_msg))
 
 
 def _get_fields(annotations: dict, default_kwargs: dict):
@@ -54,9 +60,9 @@ class BaseStateMeta(ABCMeta):
         ...     object = set()
         >>> try:
         ...     BaseState()
-        ... except ValueError as e:
+        ... except InputError as e:
         ...     e
-        ValueError('input: field required')
+        InputError('input: field required')
         >>> BaseState(input='str')._fields
         ['input', 'value', 'object']
         >>> BaseState(input='str').__annotations__
@@ -117,9 +123,9 @@ class BaseState(metaclass=BaseStateMeta):
     ...     object = set()
     >>> try:
     ...     State()
-    ... except ValueError as e:
+    ... except InputError as e:
     ...     e
-    ValueError('input: field required')
+    InputError('input: field required')
 
     >>> State(input='str')
     State(input='str', value=10, object=set())
@@ -242,7 +248,7 @@ class BaseState(metaclass=BaseStateMeta):
 
 
 def merge(
-    left: dict, right: dict, raise_on_left_missing: bool = True, path: tuple = ()
+        left: dict, right: dict, raise_on_left_missing: bool = True, path: tuple = ()
 ):
     """
     >>> left = {'input': {'value': 'test'}}
@@ -259,9 +265,9 @@ def merge(
     >>> right = {'input': {'value': 'test2', 'value2': 'test'}}
     >>> try:
     ...     merge(left, right)
-    ... except ValueError as e:
+    ... except ConsistencyError as e:
     ...     e
-    ValueError("La clé input.value2 n'existe pas dans le dictionnaire de gauche")
+    ConsistencyError("La clé input.value2 n'existe pas dans le dictionnaire de gauche")
     >>> left = {'input': {'value': 'test'}}
     >>> right = {'input': {'value': 'test2', 'value2': 'test'}}
     >>> merge(left, right, raise_on_left_missing=False)
@@ -296,7 +302,7 @@ def merge(
                 left[key] = right_value
         else:
             if raise_on_left_missing:
-                raise ValueError(
+                raise ConsistencyError(
                     f"La clé {'.'.join(map(str, (*path, key)))} n'existe pas dans le dictionnaire de gauche"
                 )
             else:
@@ -347,7 +353,7 @@ def diff(left, right, path: tuple = (), diffs: list | None = None):
                     )
                 )
         else:
-            raise ValueError(
+            raise ConsistencyError(
                 f"La clé {'.'.join(map(str, (*path, key)))} n'existe pas dans le dictionnaire de gauche"
             )
 
