@@ -4,8 +4,6 @@ from typing import Any, Callable
 from contextlib import contextmanager
 from inspect import Signature
 
-from tornado.options import define
-
 
 class ConsistencyError(Exception): ...
 
@@ -80,7 +78,6 @@ class BaseStateMeta(ABCMeta):
         dct["_default"] = default_kwargs
         dct["_fields"] = _get_fields(annotations, default_kwargs)
         dct["__annotations__"] = annotations
-        __init__ = dct.get("__init__")
 
         def _from_kwargs(self, kwargs: dict):
             for key, value in kwargs.items():
@@ -162,11 +159,110 @@ class BaseState(metaclass=BaseStateMeta):
 
     def __init__(self, *args, **kwargs):
         self.__pre_init__(*args, **kwargs)
-        self._diff = False
+        self._watch_for_change = False
+        self._parent = None
+        self._name = None
+        self._child: list["BaseState"] | None = None
+        for field in self._fields:
+            attr = getattr(self, field)
+            if isinstance(attr, BaseState):
+                attr.parent = self
+                attr.name = field
+                self.child = attr
+
+        self.change = {}
 
     def __repr__(self):
         attrs = ", ".join(f"{field}={getattr(self, field)!r}" for field in self._fields)
         return f"{self.__class__.__name__}({attrs})"
+
+    @property
+    def parent(self) -> "BaseState":
+        """
+
+        >>> class State(BaseState):
+        ...     class Input(BaseState):
+        ...         value: str
+        ...
+        ...     input: Input
+        >>> state = State(input=State.Input(value='str'))
+        >>> state.input.parent
+        State(input=Input(value='str'))
+
+        Returns:
+
+        """
+        return self._parent
+
+    @parent.setter
+    def parent(self, value: "BaseState"):
+        if not self._parent:
+            self._parent = value
+        else:
+            raise TypeError("parent attribute has already been set")
+
+    @property
+    def child(self):
+        """
+        >>> class State(BaseState):
+        ...     class Input(BaseState):
+        ...         value: str
+        ...
+        ...     input: Input
+        >>> state = State(input=State.Input(value='str'))
+        >>> state.child
+        [Input(value='str')]
+
+        >>> class State(BaseState):
+        ...     class Input(BaseState):
+        ...         value: str
+        ...     class SecondInput(BaseState):
+        ...         value: str
+        ...
+        ...     input: Input
+        ...     second_input: SecondInput
+        >>> state = State(input=State.Input(value='str'), second_input=State.SecondInput(value='str'))
+        >>> state.child
+        [Input(value='str'), SecondInput(value='str')]
+        >>> class State(BaseState):
+        ...     class Input(BaseState):
+        ...         value: str
+        ...
+        ...     input: Input
+        ...     second_input: str
+        >>> state = State(input=State.Input(value=''), second_input='')
+        >>> state.child
+        [Input(value='')]
+        """
+        return self._child
+
+    @child.setter
+    def child(self, value: "BaseState"):
+        if self._child:
+            self._child.append(value)
+        else:
+            self._child = [value]
+
+    @property
+    def name(self):
+        """
+        >>> class State(BaseState):
+        ...     class Input(BaseState):
+        ...         value: str
+        ...
+        ...     input: Input
+        >>> state = State(input=State.Input(value='str'))
+        >>> state.input.name
+        'input'
+        """
+        return self._name
+
+    @name.setter
+    def name(self, value: str):
+        if not self._name:
+            self._name = value
+        else:
+            raise TypeError("name attribute has already been set")
 
     @classmethod
     def default(cls):
@@ -257,8 +353,14 @@ class BaseState(metaclass=BaseStateMeta):
                 result[field] = attr
         return result
 
+    def set_watch_for_change(self, value: bool):
+        self._watch_for_change = value
+        if self.child:
+            for child in self.child:
+                child.set_watch_for_change(value)
+
     @contextmanager
-    def with_diff(self):
+    def watch_for_change(self):
         """
 
         >>> class State(BaseState):
@@ -266,30 +368,51 @@ class BaseState(metaclass=BaseStateMeta):
         ...         value: str
         ...
         ...     input: Input
-        >>> state = State(input='')
-        >>> state._diff
+        ...     value: str
+        >>> state = State(value='', input=State.Input(value=''))
+        >>> state._watch_for_change
         False
-        >>> with state.with_diff():
-        ...     state._diff
+        >>> with state.watch_for_change():
+        ...     state._watch_for_change
         True
-        >>> state._diff
+        >>> state._watch_for_change
         False
+        >>> with state.watch_for_change():
+        ...     state.value = 'a value'
+        ...     state.change
+        {'value': 'a value'}
+        >>> state
+        State(input=Input(value=''), value='a value')
+        >>> state = State(value='', input=State.Input(value=''))
+        >>> with state.watch_for_change():
+        ...     state.input.value = 'a value'
+        ...     state.change
+        {'input': {'value': 'a value'}}
 
         Returns:
 
         """
-        self._diff = True
+        self.set_watch_for_change(True)
         try:
-            yield self._diff
+            yield
         finally:
-            self._diff = False
+            self.set_watch_for_change(False)
+
+    def update_change(self, key, value):
+        self.change.update({key: value})
 
     def __setattr__(self, key, value):
-        if key == "_diff":
+        if key == "_watch_for_change":
             super().__setattr__(key, value)
         else:
-            has_diff = getattr(self, "_diff", None)
-            if not has_diff or (has_diff and not self._diff):
+            has_diff = getattr(self, "_watch_for_change", None)
+            if not has_diff or (has_diff and not self._watch_for_change):
+                super().__setattr__(key, value)
+            else:
+                change = {key: value}
+                self.update_change(key, value)
+                if self.parent:
+                    self.parent.update_change(self.name, change)
                 super().__setattr__(key, value)
 
     # def __getattr__(self, item):
