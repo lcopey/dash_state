@@ -25,7 +25,9 @@ def update_store(value, state: StateData):
     state.input.value = value
 
 
-@callback(Output(markdown, "children"), Redux.store.as_input)
+@callback(
+    Output(markdown, "children"), Redux.store.as_input, prevent_initial_callback=True
+)
 def update_markdown(state):
     print("update_markdown")
     state = StateData.from_dict(state)

@@ -194,7 +194,23 @@ class ReduxStore(html.Div):
         mode: Literal["callback", "initial", "initial_state"],
         default: Any | None = None,
     ) -> dcc.Store:
-        """TODO documenter celle-ci car plein de branchement"""
+        """
+
+        Args:
+            *inputs: Dash Input ou State servant à définir l'id du futur surrogate store
+            mode Literal["callback", "initial", "initial_state"]:
+                - callback: définit un Store qui prendra prendra les changements initiés par les inputs
+                    Dans ce mode, la valeur par défaut n'est pas utilisé et le master_store est utilisé
+                    # TODO prendre un simple dictionnaire à la place ?
+                - initial: définit un Store qui stockera les valeurs à l'initial du composant surveillé
+                    Dans ce mode, une valeur par défaut peut être fourni
+                - initial_state: définit un Store dont la seule finalité sera de dire si le premier callback
+                    a déjà été executé ou non.
+            default:
+
+        Returns:
+
+        """
         idx = _input_hash(*inputs)
         if idx not in self._surrogate_stores:
             # Initialise les valeurs avec la forme des données du master store
