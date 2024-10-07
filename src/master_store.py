@@ -2,7 +2,7 @@ from dash import html, dcc, callback, ALL, Input, Output, State, callback_contex
 import sys
 from typing import Any
 from dataclasses import dataclass
-from .utils import BaseState
+from .state import BaseState
 
 from dash.exceptions import PreventUpdate
 

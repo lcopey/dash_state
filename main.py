@@ -1,5 +1,5 @@
 from src.master_store import ReduxStore
-from src.utils import BaseState
+from src.state import BaseState
 from dash import Dash, html, dcc, Input, Output, State, callback
 
 
