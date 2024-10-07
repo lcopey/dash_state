@@ -8,6 +8,7 @@ from dash import (
     State,
     callback_context,
     no_update,
+    clientside_callback,
 )
 import sys
 from typing import Any
@@ -171,27 +172,68 @@ class ReduxStore(html.Div):
 
         super().__init__([self._master_store])
 
-        @callback(
+        # @callback(
+        #     Output(self._master_store, "data"),
+        #     Input(self._surrogate_stores_match.bind(mode="callback").idx(ALL), "data"),
+        #     self.store.as_state,
+        #     prevent_initial_call=True,
+        # )
+        # def update_master_store(surrogate_state, current_state: dict):
+        #     print("update_master_store")
+        #     index = trigger_index()
+        #     if index is not None:
+        #         merged = self._state_factory.from_dict(current_state).merge(
+        #             surrogate_state[index]
+        #         )
+        #
+        #         return merged.as_dict()
+        #     raise PreventUpdate()
+        clientside_callback(
+            """
+            function(surrogate_state, current_state) {
+                function trigger_index() {
+                    let context = window.dash_clientside.callback_context;
+                    let triggered = context.inputs_list[0].map(
+                        (item) => item.id.idx
+                    )
+                    let triggered_id = context.triggered_id.idx;
+                    return triggered.indexOf(triggered_id);
+                }
+                function isObject(item) {
+                    return (item && typeof item == 'object' && !Array.isArray(item));
+                }
+                function merge(target, ...sources) {
+                    if (!sources.length) return target;
+                    const source = sources.shift();
+                    
+                    if (isObject(target) && isObject(source)) {
+                        for (const key in source) {
+                            if (!isObject(source[key])) {
+                                if (!target[key]) Object.assign(target, { [key]: {} });
+                                merge(target[key], source[key]);
+                            } else {
+                                Object.assign(target, { [key]: source[key] });
+                            }
+                        }
+                    }
+                    return merge(target, ...sources);
+                }
+                
+                let index = trigger_index();
+                let results = merge(current_state, surrogate_state[index]);
+                console.log('update_master_store', results);
+                return results;
+            }""",
             Output(self._master_store, "data"),
             Input(self._surrogate_stores_match.bind(mode="callback").idx(ALL), "data"),
             self.store.as_state,
             prevent_initial_call=True,
         )
-        def update_master_store(surrogate_state, current_state: dict):
-            print("update_master_store")
-            index = trigger_index()
-            if index is not None:
-                merged = self._state_factory.from_dict(current_state).merge(
-                    surrogate_state[index]
-                )
-
-                return merged.as_dict()
-            raise PreventUpdate()
 
     def _surrogate_input_store(
         self,
         *inputs: Input | State,
-        mode: Literal["callback", "initial", "initial_state"],
+        mode: Literal["callback", "initial", "on_init"],
         default: Any | None = None,
     ) -> dcc.Store:
         """
@@ -204,7 +246,7 @@ class ReduxStore(html.Div):
                     # TODO prendre un simple dictionnaire à la place ?
                 - initial: définit un Store qui stockera les valeurs à l'initial du composant surveillé
                     Dans ce mode, une valeur par défaut peut être fourni
-                - initial_state: définit un Store dont la seule finalité sera de dire si le premier callback
+                - on_init: définit un Store dont la seule finalité sera de dire si le premier callback
                     a déjà été executé ou non.
             default:
 
@@ -221,7 +263,7 @@ class ReduxStore(html.Div):
             elif mode == "initial":
                 storage_type = self._storage_type
                 initial_data = default
-            elif mode == "initial_state":
+            elif mode == "on_init":
                 storage_type = "memory"
                 initial_data = True
             else:
@@ -237,34 +279,74 @@ class ReduxStore(html.Div):
         return self._surrogate_stores[(idx, mode)]
 
     def store_initial(
-        self, component_id, component_property, default: Any | None, **callback_kwargs
+        self,
+        component_id,
+        component_property,
+        on: str | None = None,
+        default: Any | None = None,
+        **callback_kwargs,
     ):
-        input_ = Input(component_id=component_id, component_property=component_property)
+        if on:
+            input_ = Input(component_id=component_id, component_property=on)
+            state_data = State(
+                component_id=component_id, component_property=component_property
+            )
+        else:
+            input_ = Input(
+                component_id=component_id, component_property=component_property
+            )
+            state_data = None
 
-        surrogate_store_value = self._surrogate_input_store(
+        value_surrogate_store = self._surrogate_input_store(
             input_, mode="initial", default=default
         )
-        surrogate_store_state = self._surrogate_input_store(
-            input_, mode="initial_state"
+        on_init_surrogate_store = self._surrogate_input_store(input_, mode="on_init")
+        inputs = (
+            input_,
+            Input(value_surrogate_store, "data"),
+            State(on_init_surrogate_store, "data"),
         )
+        if state_data:
+            inputs = (*inputs, state_data)
 
         prevent_initial_call = callback_kwargs.pop("prevent_initial_call", False)
 
-        @callback(
-            Output(surrogate_store_value, "data"),
-            Output(surrogate_store_state, "data"),
+        # @callback(
+        #     Output(value_surrogate_store, "data"),
+        #     Output(on_init_surrogate_store, "data"),
+        #     Output(component_id, component_property),
+        #     *inputs,
+        #     prevent_initial_call=prevent_initial_call,
+        # )
+        # def _proxy(*args):
+        #     *args, store, on_init = args
+        #     print("store_initial", args, store, on_init)
+        #     if on_init:
+        #         return no_update, False, store
+        #     else:
+        #         return args[0], False, no_update
+
+        clientside_callback(
+            """function(...args) {
+                let datas, store, on_init;
+                let no_update = window.dash_clientside.no_update
+                if (args.length === 3) {
+                    [datas, store, on_init] = args; 
+                } else {
+                    [_, store, on_init, datas] = args;
+                }
+                if (on_init) {
+                    return [no_update, false, store]; 
+                } else {
+                    return [datas, false, no_update];
+                }
+            }""",
+            Output(value_surrogate_store, "data"),
+            Output(on_init_surrogate_store, "data"),
             Output(component_id, component_property),
-            input_,
-            Input(surrogate_store_value, "data"),
-            State(surrogate_store_state, "data"),
+            *inputs,
             prevent_initial_call=prevent_initial_call,
         )
-        def _proxy(arg, store: Any, state: bool):
-            print("store_initial", arg, store, state)
-            if state:
-                return no_update, False, store
-            else:
-                return arg, False, no_update
 
     def update(self, *inputs: Input | State, **callback_kwargs):
         surrogate_store = self._surrogate_input_store(*inputs, mode="callback")

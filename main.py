@@ -17,7 +17,9 @@ markdown = dcc.Markdown(id="markdown")
 app = Dash(prevent_initial_callbacks=True)
 app.layout = html.Div([Redux, input_, markdown])
 
-Redux.store_initial(input_.id, "value", default="")
+Redux.store_initial(
+    component_id=input_.id, component_property="value", on="value", default=""
+)
 
 
 @Redux.update(Input(input_, "value"))
