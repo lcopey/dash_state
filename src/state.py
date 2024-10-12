@@ -1,6 +1,5 @@
-from functools import reduce
 from abc import ABCMeta
-from typing import Any, Generator
+from typing import Any, Generator, Union
 from contextlib import contextmanager
 from inspect import Signature
 from copy import deepcopy
@@ -61,11 +60,11 @@ class BaseStateMeta(ABCMeta):
         ...     input: str
         ...     value: float = 10
         ...     object = set()
-        >>> BaseState._fields
+        >>> BaseState.fields
         ['input', 'value', 'object']
         >>> BaseState.__annotations__
         {'input': <class 'str'>, 'value': <class 'float'>, 'object': <class 'set'>}
-        >>> BaseState._default
+        >>> BaseState._default  # noqa
         {'value': 10, 'object': set()}
 
         Args:
@@ -85,6 +84,10 @@ class BaseStateMeta(ABCMeta):
         self_instance = super().__new__(cls, name, bases, dct)
 
         return self_instance
+
+    @property
+    def fields(cls):
+        return cls._fields  # noqa
 
 
 class BaseState(metaclass=BaseStateMeta):
@@ -381,7 +384,7 @@ class BaseState(metaclass=BaseStateMeta):
                 result[field] = attr
         return result
 
-    def __eq__(self, other: "BaseState"):
+    def __eq__(self, other: Union["BaseState", dict]):
         """
 
         >>> class Left(BaseState):
@@ -418,7 +421,7 @@ class BaseState(metaclass=BaseStateMeta):
             )
         )
 
-    def __ne__(self, other: "BaseState"):
+    def __ne__(self, other: Union["BaseState", dict]):
         """
 
         >>> class Left(BaseState):

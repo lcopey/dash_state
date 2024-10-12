@@ -52,6 +52,7 @@ input = dcc.Input(id=...)
 @store.update(Input(input, 'value')
 def callback(value, state):
     state.input.value = value
+
 """
 
 
@@ -249,7 +250,6 @@ class ReduxStore(html.Div):
             mode Literal["callback", "initial", "initial_state"]:
                 - callback: définit un Store qui prendra prendra les changements initiés par les inputs
                     Dans ce mode, la valeur par défaut n'est pas utilisé et le master_store est utilisé
-                    # TODO prendre un simple dictionnaire à la place ?
                 - initial: définit un Store qui stockera les valeurs à l'initial du composant surveillé
                     Dans ce mode, une valeur par défaut peut être fourni
                 - on_init: définit un Store dont la seule finalité sera de dire si le premier callback
@@ -265,7 +265,7 @@ class ReduxStore(html.Div):
             store_id = self._surrogate_stores_match.bind(mode=mode).idx(idx)
             if mode == "callback":
                 storage_type = self._storage_type
-                initial_data = self._master_store.data
+                initial_data = self._master_store.data  # noqa
             elif mode == "initial":
                 storage_type = self._storage_type
                 initial_data = default
