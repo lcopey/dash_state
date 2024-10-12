@@ -273,7 +273,6 @@ class BaseState(metaclass=BaseStateMeta):
 
     @classmethod
     def from_dict(cls, values: dict):
-        # TODO Refaire dans __init__
         """
 
         >>> class State(BaseState):

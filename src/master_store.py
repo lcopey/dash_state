@@ -7,15 +7,24 @@ from dash import (
     Output,
     State,
     callback_context,
-    no_update,
     clientside_callback,
 )
-import sys
-from typing import Any
-from typing import Literal, Hashable
+from typing import Any, Literal, Hashable, Protocol
+from hashlib import sha256
+import orjson
+from dataclasses import dataclass
 from .state import BaseState
 
-from dash.exceptions import PreventUpdate
+
+class ComponentT(Protocol):
+    component_id: str
+    component_property: str
+
+
+@dataclass
+class Component:
+    component_id: str
+    component_property: str
 
 
 class StoreError(TypeError): ...
@@ -125,13 +134,26 @@ def _unpack(idx: dict | str) -> str:
     return idx
 
 
-def _input_hash(*args: Input | State) -> str:
+def _input_hash(*args: ComponentT) -> Hashable:
+    """
+    >>> _input_hash(Input('input', 'value'))
+    '70e842a92a447f0653f79bf869a2e550166134b03bc759d8d61b1a9a1a06958c'
+    >>> _input_hash(Input('input', 'value'), State('store', 'data'))
+    'cb61779d9e17f4ea19e28ecbf9d8859626c981fb7ad8da75f158810529e109c5'
+    >>> _input_hash(Component('input', 'value'))
+    '70e842a92a447f0653f79bf869a2e550166134b03bc759d8d61b1a9a1a06958c'
+
+    Args:
+        *args:
+
+    Returns:
+
+    """
     inputs = [
         ".".join((_unpack(arg.component_id), arg.component_property)) for arg in args
     ]
-    _hash = hash(tuple(inputs))
-    _hash += sys.maxsize + 1
-    return hex(_hash)[2:]
+    hash_ = sha256(orjson.dumps(tuple(inputs))).hexdigest()
+    return hash_
 
 
 class ReduxStore(html.Div):
@@ -172,22 +194,6 @@ class ReduxStore(html.Div):
 
         super().__init__([self._master_store])
 
-        # @callback(
-        #     Output(self._master_store, "data"),
-        #     Input(self._surrogate_stores_match.bind(mode="callback").idx(ALL), "data"),
-        #     self.store.as_state,
-        #     prevent_initial_call=True,
-        # )
-        # def update_master_store(surrogate_state, current_state: dict):
-        #     print("update_master_store")
-        #     index = trigger_index()
-        #     if index is not None:
-        #         merged = self._state_factory.from_dict(current_state).merge(
-        #             surrogate_state[index]
-        #         )
-        #
-        #         return merged.as_dict()
-        #     raise PreventUpdate()
         clientside_callback(
             """
             function(surrogate_state, current_state) {
@@ -310,21 +316,6 @@ class ReduxStore(html.Div):
             inputs = (*inputs, state_data)
 
         prevent_initial_call = callback_kwargs.pop("prevent_initial_call", False)
-
-        # @callback(
-        #     Output(value_surrogate_store, "data"),
-        #     Output(on_init_surrogate_store, "data"),
-        #     Output(component_id, component_property),
-        #     *inputs,
-        #     prevent_initial_call=prevent_initial_call,
-        # )
-        # def _proxy(*args):
-        #     *args, store, on_init = args
-        #     print("store_initial", args, store, on_init)
-        #     if on_init:
-        #         return no_update, False, store
-        #     else:
-        #         return args[0], False, no_update
 
         clientside_callback(
             """function(...args) {
