@@ -1,6 +1,6 @@
 from functools import reduce
 from abc import ABCMeta
-from typing import Any, Callable, Generator
+from typing import Any, Generator
 from contextlib import contextmanager
 from inspect import Signature
 from copy import deepcopy
@@ -77,6 +77,10 @@ class BaseStateMeta(ABCMeta):
         dct["_default"] = default_kwargs
         dct["_fields"] = _get_fields(annotations, default_kwargs)
         dct["__annotations__"] = annotations
+        if not all(key in dct["_fields"] for key in annotations.keys()):
+            raise ConsistencyError("All field should be annotated")
+        if not all(field in annotations.keys() for field in dct["_fields"]):
+            raise ConsistencyError("All field should be annotated")
         self_instance = super().__new__(cls, name, bases, dct)
 
         return self_instance
@@ -546,6 +550,39 @@ class BaseState(metaclass=BaseStateMeta):
 
     def update_change(self, key, value):
         self._change.update({key: value})
+
+    @classmethod
+    def tree(cls):
+        """
+        >>> class State(BaseState):
+        ...     class Input(BaseState):
+        ...         value: str
+        ...     input: Input
+        ...     value: str
+        >>> State.tree()
+        [{'input': ['value']}, 'value']
+        >>> class State(BaseState):
+        ...     class Input(BaseState):
+        ...         class InnerState(BaseState):
+        ...             value: str
+        ...         value: str
+        ...         other_value: InnerState
+        ...     input: Input
+        ...     value: str
+        >>> State.tree()
+        [{'input': ['value', {'other_value': ['value']}]}, 'value']
+
+        Returns:
+
+        """
+        current_tree = []
+        for field in cls._fields:
+            obj = cls.__annotations__[field]
+            if issubclass(obj, BaseState):
+                current_tree.append({field: obj.tree()})
+            else:
+                current_tree.append(field)
+        return current_tree
 
 
 def merge(
