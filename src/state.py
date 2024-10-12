@@ -4,6 +4,7 @@ from typing import Any, Generator
 from contextlib import contextmanager
 from inspect import Signature
 from copy import deepcopy
+from functools import reduce
 
 
 class ConsistencyError(Exception): ...
@@ -699,3 +700,104 @@ def diff(left, right, path: tuple = (), diffs: list | None = None):
 
     diffs = reduce(lambda x, y: merge(x, y, raise_on_left_missing=False), diffs)
     return diffs
+
+
+class ParseError(Exception): ...
+
+
+def dot_notation(
+    tree: list[str | dict[str, list]], prefix: str = "", current: list | None = None
+) -> list[str]:
+    """
+    >>> dot_notation([{'input': ['value']}, 'value'])
+    ['input.value', 'value']
+
+    >>> dot_notation([{'input': ['value', {'other_value': ['value']}]}, 'value'])
+    ['input.value', 'input.other_value.value', 'value']
+
+    Args:
+        tree:
+        prefix (str):
+        current (list | None):
+
+    Returns:
+
+    """
+    if current is None:
+        current = []
+    for value in tree:
+        if isinstance(value, str):
+            value = ".".join((prefix, value)) if prefix else value
+            current.append(value)
+        elif isinstance(value, dict):
+            for key, subtree in value.items():
+                key = ".".join((prefix, key)) if prefix else key
+                dot_notation(subtree, key, current)
+        else:
+            raise ParseError(
+                "tree should be composed solely from string and dict of list"
+            )
+    return current
+
+
+def split_last(item: str):
+    """
+
+    >>> split_last('input.value')
+    ('input', 'value')
+    >>> split_last('input.value.inner_value')
+    ('input.value', 'inner_value')
+    >>> split_last('value')
+    (None, 'value')
+
+    Args:
+        item:
+
+    Returns:
+
+    """
+    items = item.split(".")
+    if len(items) == 1:
+        return None, items[0]
+    else:
+        return ".".join(items[:-1]), items[-1]
+
+
+def from_dot_notation(items: list[str]):
+    """
+    >>> from_dot_notation(['input.value.inner_value', 'input.value.second_value', 'value'])
+    ['value', {'input': {'value': ['inner_value', 'second_value']}}]
+    >>> from_dot_notation(['input.value', 'input.second_value', 'inner.value.inner_value'])
+    [{'input': ['value', 'second_value'], 'inner': {'value': ['inner_value']}}]
+
+    Args:
+        items (list[str]):
+
+    Returns:
+
+    """
+    key_contains_dot = lambda x: any(key is not None and "." in key for key in x.keys())
+
+    result = {}
+    for item in items:
+        key, value = split_last(item)
+        if key in result:
+            result[key].append(value)
+        else:
+            result[key] = [value]
+
+    while key_contains_dot(result):
+        keys = tuple(result.keys())
+        for key in keys:
+            if key and "." in key:
+                value = result.pop(key)
+                inner_key, inner_value = split_last(key)
+                result[inner_key] = {inner_value: value}
+
+    if None in result:
+        final_result = result.pop(None)
+    else:
+        final_result = []
+    final_result.append(result)
+
+    return final_result
