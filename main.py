@@ -51,13 +51,18 @@ def update_store(value, state: StateData):
     state.input.value = value
 
 
-@callback(
-    Output(markdown, "children"), Redux.store.as_input, prevent_initial_callback=True
-)
-def update_markdown(state):
-    print("update_markdown")
-    state = StateData.from_dict(state)
-    return state.input.value
+# @callback(
+#     Output(markdown, "children"), Redux.store.as_input, prevent_initial_callback=True
+# )
+# def update_markdown(state):
+#     print("update_markdown")
+#     state = StateData.from_dict(state)
+#     return state.input.value
+
+
+@Redux.on_change_of(Redux.on.input.value, Output(markdown, "children"))
+def update_markdown(value):
+    return value
 
 
 if __name__ == "__main__":

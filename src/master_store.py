@@ -16,8 +16,10 @@ import orjson
 from dataclasses import dataclass
 from enum import StrEnum, auto
 
+from dash_prefix import component_id
+
 from .state import BaseState
-from .observer import Observer
+from .observer import Observer, Proxy
 
 
 class ComponentT(Protocol):
@@ -40,8 +42,21 @@ Les fonctions décorées par ReduxStore.update doivent prendre l'état de l'appl
 store = ReduxStore(...)
 input = dcc.Input(id=...)
 
-@store.update(Input(input, 'value')
+@store.update(Input(input, 'value'))
 def callback(value, state):
+    ...
+
+"""
+
+FORGOT_STORE_MSG_ERROR = """
+Les fonctions décorés par ReduxStore.on_change_of doivent prendre la valeur observée en dernier argument.
+
+store = ReduxStore(...)
+input = dcc.Input(id=...)
+widget = dcc.SomeWidget(id=...)
+
+@store.on_change_of(store.on.input.value, Input(...), ..., Output(widget, 'children'))
+def callback(..., value_changed):
     ...
 
 """
@@ -170,7 +185,7 @@ class StoreMode(StrEnum):
     CALLBACK = auto()
     INITIAL = auto()
     ON_INIT = auto()
-    EVENT = auto()
+    ON_STORE_CHANGE = auto()
 
 
 MemoryT = Literal["memory", "session", "local"]
@@ -408,20 +423,64 @@ class ReduxStore(html.Div):
 
         return wrapper
 
-    # def on_change_of(self, on: Proxy[BaseState], *inputs: Input | State, **callback_kwargs):
-    #     inputs = (
-    #         Component(self.store_id, '.'.join(on._path)),  # noqa
-    #         *inputs
-    #     )
-    #     surrogate_store = self._surrogate_input_store(*inputs, mode='event')
-    #
-    #     def wrapper(func):
-    #         prevent_initial_call = callback_kwargs.pop("prevent_initial_call", True)
-    #         # callback(
-    #         #     self.store.as_input
-    #         # )
-    #
-    #
-    # @property
-    # def on(self):
-    #     return self._observer.on
+    def _get_on_change_surrogate_store(self, path: str):
+        idx = _input_hash(Component(self._store_id, path))
+        store_id = self._surrogate_store_ids(mode=StoreMode.ON_STORE_CHANGE, idx=idx)
+        if store_id not in self._surrogate_stores:
+            self._register_store(store_id, self._master_store.data, "memory")
+        return self._surrogate_stores[store_id]
+
+    def on_change_of(
+        self,
+        on: Proxy[BaseState],
+        *components: Input | State | Output,
+        **callback_kwargs,
+    ):
+        path = ".".join(on._path)
+        store = self._get_on_change_surrogate_store(path)
+
+        # Ajoute un store qui est mis à jour lors d'une mise à jour du store global
+        clientside_callback(
+            f"""
+            function(state) {{
+                const path = '{path}';
+                
+                const getValue = (obj, path) => {{
+                  return path.split('.').reduce((acc, part) => {{
+                    return acc && acc[part]; // Vérifie que acc n'est pas undefined
+                  }}, obj);
+                }};
+                
+                const value = getValue(state, path);
+                console.log(value);
+                return value;
+            }}
+            """,
+            Output(store, "data"),
+            self.store.as_input,
+        )
+
+        outputs = [
+            component for component in components if isinstance(component, Output)
+        ]
+        inputs = [
+            component for component in components if not isinstance(component, Output)
+        ]
+
+        inputs = [*inputs, Input(store, "data")]
+
+        def wrapper(func):
+            prevent_initial_call = callback_kwargs.pop("prevent_initial_call", True)
+
+            @callback(*outputs, *inputs, prevent_initial_call=prevent_initial_call)
+            def _proxy(*args):
+                if len(args) < len(inputs):
+                    raise StoreError(FORGOT_STORE_MSG_ERROR)
+                result = func(*args)
+                return result
+
+        return wrapper
+
+    @property
+    def on(self):
+        return self._observer.on

@@ -22,9 +22,9 @@ ValueError("wrong_input does not exist in the field of <class 'src.observer.Stat
 ...     e
 ValueError("wrong_input does not exist in the field of <class 'src.observer.State.Input'>")
 >>> Observer(State).on.input._path
-['input']
+('input',)
 >>> Observer(State).on.input.value._path
-['input', 'value']
+('input', 'value')
 """
 
 from typing import TypeVar, Generic
@@ -35,8 +35,8 @@ T = TypeVar("T", bound=BaseState)
 
 
 class Proxy(Generic[T]):
-    def __init__(self, cls: type[T], path: list = None):
-        self._path = path or list()
+    def __init__(self, cls: type[T], path: tuple | None = None):
+        self._path = path or tuple()
         self._cls = cls
         self._valid_values = set(cls.__annotations__.keys())
 
@@ -45,7 +45,7 @@ class Proxy(Generic[T]):
             return super().__getattribute__(item)
 
         if item in self._valid_values:
-            self._path.append(item)
+            self._path = (*self._path, item)
             obj = self._cls.__annotations__.get(item)
             if issubclass(obj, BaseState):
                 value = Proxy(obj, self._path)
