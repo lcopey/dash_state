@@ -24,6 +24,27 @@ Redux.store_initial(
     component_id=input_.id, component_property="value", on="value", default=""
 )
 
+"""
+const obj = {
+  state: {
+    input: {
+      value: 'ma valeur'
+    }
+  }
+};
+
+const path = 'state.input.value';
+
+const getValue = (obj, path) => {
+  return path.split('.').reduce((acc, part) => {
+    return acc && acc[part]; // Vérifie que acc n'est pas undefined
+  }, obj);
+};
+
+const value = getValue(obj, path);
+console.log(value);
+"""
+
 
 @Redux.update(Input(input_, "value"))
 def update_store(value, state: StateData):

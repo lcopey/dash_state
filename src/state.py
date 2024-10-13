@@ -555,39 +555,6 @@ class BaseState(metaclass=BaseStateMeta):
     def update_change(self, key, value):
         self._change.update({key: value})
 
-    @classmethod
-    def tree(cls):
-        """
-        >>> class State(BaseState):
-        ...     class Input(BaseState):
-        ...         value: str
-        ...     input: Input
-        ...     value: str
-        >>> State.tree()
-        [{'input': ['value']}, 'value']
-        >>> class State(BaseState):
-        ...     class Input(BaseState):
-        ...         class InnerState(BaseState):
-        ...             value: str
-        ...         value: str
-        ...         other_value: InnerState
-        ...     input: Input
-        ...     value: str
-        >>> State.tree()
-        [{'input': ['value', {'other_value': ['value']}]}, 'value']
-
-        Returns:
-
-        """
-        current_tree = []
-        for field in cls._fields:
-            obj = cls.__annotations__[field]
-            if issubclass(obj, BaseState):
-                current_tree.append({field: obj.tree()})
-            else:
-                current_tree.append(field)
-        return current_tree
-
 
 def merge(
     left: dict, right: dict, raise_on_left_missing: bool = True, path: tuple = ()
