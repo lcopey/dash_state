@@ -16,7 +16,7 @@ import orjson
 from dataclasses import dataclass
 from enum import StrEnum, auto
 
-from dash_prefix import component_id
+# from dash_prefix import component_id
 
 from .state import BaseState
 from .observer import Observer, Proxy
