@@ -44,6 +44,21 @@ State(value='value', nested=NestedState(value='inner_value'))
 ...     ValueError
 ... )
 'value' expected type <class 'str'> but got <class 'dict'>
+
+# Mutability
+>>> class NestedState(BaseState):
+...     sequence: list = list()
+
+>>> class State(BaseState):
+...     nested: NestedState = NestedState()
+
+>>> state = State()
+>>> new_state = State.from_dict(state.to_dict())
+>>> state.nested.sequence.append('item')
+>>> state.nested.sequence
+['item']
+>>> new_state.nested.sequence
+[]
 """
 
 from dataclasses import dataclass, fields, field as dataclass_field, asdict
@@ -105,7 +120,8 @@ class BaseStateMeta(ABCMeta):
                     )
 
         new_class = super().__new__(cls, name, bases, dct)
-        return dataclass()(new_class)
+        DataClass = dataclass()
+        return DataClass(new_class)
 
 
 class BaseState(metaclass=BaseStateMeta):

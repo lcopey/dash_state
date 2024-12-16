@@ -1,7 +1,7 @@
-from dash_state import BaseState, Store
-from dash import html, dcc, Dash, Output, Input, callback
+from dash_state import BaseState, Store, DccInput
+from dash import html, Dash, Output, callback
 import sys
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from dash.testing.composite import DashComposite
@@ -9,24 +9,30 @@ if TYPE_CHECKING:
 sys.path.append("/usr/laurent/Téléchargements/")
 
 
-def make_app() -> Dash:
+def make_app(clientside: bool = False, n_input: int = 1) -> Dash:
     class AppState(BaseState):
         value: str = ""
 
-    input_ = dcc.Input(id="input")
+    inputs = [DccInput(id=f"input{n}", value="") for n in range(n_input)]
     store = Store(id="store", state_factory=AppState)
-    label = html.Label(id="label")
     store_preview = html.Label(id="store_preview")
-    layout = [html.H1("Application de base"), input_, store, label, store_preview]
+    layout = [html.H1("Application de base"), *inputs, store, store_preview]
 
-    @store.update(Input(input_, "value"))
-    def on_input_change(value: str, state: AppState):
-        state.value = value
+    if not clientside:
 
-    @callback(Output(label, "children"), store.input)
-    def on_store_change(state: dict):
-        state = AppState.from_dict(state)
-        return state.value
+        @store.update(*(input_.input for input_ in inputs))
+        def on_input_change(*values: str, state: AppState):
+            change = "".join(values)
+            state.value = change
+    else:
+        signature = ", ".join([f"arg{n}" for n in range(n_input)])
+        function_eval = f"''.concat({signature})"
+
+        signature += ", state"
+        store.update_clientside(
+            f"({signature}) => state.value = {function_eval};",
+            *(input_.input for input_ in inputs),
+        )
 
     @callback(Output(store_preview, "children"), store.input)
     def update_store_preview(state: dict):
@@ -37,26 +43,55 @@ def make_app() -> Dash:
     return app
 
 
-def run_app(func: Callable[[], Dash]):
-    app = func()
-    app.run()
-
-
-def test_store(dash_duo: "DashComposite"):
-    app = make_app()
+def setup(dash_duo: "DashComposite", clientside: bool = False, n_input: int = 1):
+    app = make_app(clientside=clientside, n_input=n_input)
     dash_duo.start_server(app)
 
-    input_ = dash_duo.find_element("#input")
-    input_.send_keys("test")
+
+def assert_store_update(
+    dash_duo: "DashComposite", msg: str, expected: str, input_id: str = "input0"
+):
+    input_ = dash_duo.find_element(f"#{input_id}")
+    input_.send_keys(msg)
 
     # does not work...
     # assert dash_duo.get_logs() == [], "browser console should contain no error"
 
-    dash_duo.wait_for_text_to_equal("#label", "test", timeout=4)
+    dash_duo.wait_for_text_to_equal("#store_preview", expected, timeout=30)
     assert (
-        dash_duo.find_element("#store_preview").text == "{'value': 'test'}"
+        dash_duo.find_element("#store_preview").text == expected
     ), "store has not been updated"
 
 
-if __name__ == "__main__":
-    run_app(make_app)
+def test_serverside_store_update(dash_duo: "DashComposite"):
+    setup(dash_duo, clientside=False, n_input=1)
+    msg = "test"
+    expected = f"{{'value': {msg!r}}}"
+    assert_store_update(dash_duo, msg, expected, input_id="input0")
+
+
+def test_clientside_store_update(dash_duo: "DashComposite"):
+    setup(dash_duo, clientside=True, n_input=1)
+    msg = "test"
+    expected = f"{{'value': {msg!r}}}"
+    assert_store_update(dash_duo, msg, expected, input_id="input0")
+
+
+def test_serverside_multiple_store_udpate(dash_duo: "DashComposite"):
+    msg_pool = ("first", "second", "third")
+    setup(dash_duo, clientside=False, n_input=len(msg_pool))
+    messages = []
+    for n, msg in enumerate(msg_pool):
+        messages.append(msg)
+        expected = f"{{'value': {''.join(messages)!r}}}"
+        assert_store_update(dash_duo, msg, expected, f"input{n}")
+
+
+def test_clientside_multiple_store_udpate(dash_duo: "DashComposite"):
+    msg_pool = ("first", "second", "third")
+    setup(dash_duo, clientside=True, n_input=len(msg_pool))
+    messages = []
+    for n, msg in enumerate(msg_pool):
+        messages.append(msg)
+        expected = f"{{'value': {''.join(messages)!r}}}"
+        assert_store_update(dash_duo, msg, expected, f"input{n}")

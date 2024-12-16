@@ -2,4 +2,4 @@
 __pycache__
 notebooks
 *.log
-./dash_state/__dev__.py
+/dash_state/__dev__.py
