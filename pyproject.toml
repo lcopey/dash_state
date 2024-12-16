@@ -46,6 +46,7 @@ skip_glob = ["venv", ".venv"]
 
 [tool.pytest.ini_options]
 addopts = "--cov-branch --doctest-modules"
+doctest_optionflags = "NORMALIZE_WHITESPACE"
 
 ## coverage
 [tool.coverage.run]

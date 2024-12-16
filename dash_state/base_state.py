@@ -1,44 +1,46 @@
 """
->>> def try_except(func, error):
-...     try:
-...         func()
-...     except error as e:
-...         print(e)
+>>> from dash_state.utils import try_except
 
 # Simple state value
->>> class State(BaseState):
+
+>>> class State1(BaseState):
 ...     value: str
->>> State(value='a value')
-State(value='a value')
->>> class State(BaseState):
+>>> State1(value='a value')
+State1(value='a value')
+>>> class State2(BaseState):
 ...     value = 'value'
->>> state = State()
+>>> state = State2()
 >>> state
-State(value='value')
+State2(value='value')
 >>> state.__annotations__
 {'value': <class 'str'>}
+>>> class SimpleState(BaseState):
+...     value: str = ''
+>>> SimpleState()
+SimpleState(value='')
 
 # Nested state value
->>> class Input(BaseState):
+
+>>> class NestedState(BaseState):
 ...     value: str = ''
 ...
 >>> class State(BaseState):
-...     input_: Input = Input()
+...     nested = NestedState()
 ...     value: str
 ...
 >>> state = State(value='a value')
 >>> state
-State(input_=Input(value=''), value='a value')
+State(value='a value', nested=NestedState(value=''))
 >>> state.__annotations__
-{'input_': <class 'src.base_state.Input'>, 'value': <class 'str'>}
+{'value': <class 'str'>, 'nested': <class 'dash_state.base_state.NestedState'>}
 >>> state.to_dict()
-{'input_': {'value': ''}, 'value': 'a value'}
->>> State(input_={'value': 'inner value'}, value='value')
-State(input_=Input(value='inner value'), value='value')
->>> State.from_dict({'input_': {'value': 'inner_value'}, 'value': 'value'})
-State(input_=Input(value='inner_value'), value='value')
+{'value': 'a value', 'nested': {'value': ''}}
+>>> State(nested={'value': 'inner value'}, value='value')
+State(value='value', nested=NestedState(value='inner value'))
+>>> State.from_dict({'nested': {'value': 'inner_value'}, 'value': 'value'})
+State(value='value', nested=NestedState(value='inner_value'))
 >>> try_except(
-...     lambda : State(input_={'value': 'inner_value'}, value={}),
+...     lambda : State(nested={'value': 'inner_value'}, value={}),
 ...     ValueError
 ... )
 'value' expected type <class 'str'> but got <class 'dict'>
@@ -48,6 +50,8 @@ from dataclasses import dataclass, fields, field as dataclass_field, asdict
 from abc import ABCMeta
 from typing import Any, Generator
 from inspect import isfunction
+
+__all__ = ["BaseState"]
 
 
 def _is_private_or_special(key: str) -> bool:

@@ -1,3 +1,5 @@
 .idea
 __pycache__
 notebooks
+*.log
+./dash_state/__dev__.py
