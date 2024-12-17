@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from dash import html, Dash, Output, callback
 import sys
 from typing import TYPE_CHECKING
+from .utils import random_string
 
 if TYPE_CHECKING:
     from dash.testing.composite import DashComposite
@@ -30,7 +31,7 @@ def make_app(clientside: bool = False, n_input: int = 1) -> Dash:
         function_eval = f"''.concat({signature})"
 
         signature += ", state"
-        store.update_clientside(
+        store.clientside_update(
             f"({signature}) => state.value = {function_eval};",
             *(input_.input for input_ in inputs),
         )
@@ -79,7 +80,7 @@ def test_clientside_store_update(dash_duo: "DashComposite"):
 
 
 def test_serverside_multiple_store_udpate(dash_duo: "DashComposite"):
-    msg_pool = ("first", "second", "third")
+    msg_pool = tuple(random_string() for _ in range(3))
     setup(dash_duo, clientside=False, n_input=len(msg_pool))
     messages = []
     for n, msg in enumerate(msg_pool):
@@ -89,7 +90,7 @@ def test_serverside_multiple_store_udpate(dash_duo: "DashComposite"):
 
 
 def test_clientside_multiple_store_udpate(dash_duo: "DashComposite"):
-    msg_pool = ("first", "second", "third")
+    msg_pool = tuple(random_string() for _ in range(3))
     setup(dash_duo, clientside=True, n_input=len(msg_pool))
     messages = []
     for n, msg in enumerate(msg_pool):

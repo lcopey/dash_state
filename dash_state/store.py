@@ -15,14 +15,22 @@ Store(id=Idx(type='surrogate', idx='70e842a92a447f0653f79bf869a2e550166134b03bc7
 >>> master_store
 Div([Store(id='store', data={'value': ''}, storage_type='session'),
 Store(id=Idx(type='surrogate', idx='70e842a92a447f0653f79bf869a2e550166134b03bc759d8d61b1a9a1a06958c'))])
-
 """
 
-from dash import html, dcc, Output, Input, State, callback, clientside_callback
+from dash import (
+    html,
+    dcc,
+    Output,
+    Input,
+    State,
+    callback,
+    clientside_callback,
+    no_update,
+)
 from dash.dependencies import DashDependency
 from pydantic import BaseModel
 
-from typing import Literal, Callable, TypeVar
+from typing import Literal, Callable, TypeVar, Any
 from .idx import Idx
 from .fast_dependencies import DccStore
 from functools import wraps
@@ -35,7 +43,7 @@ __all__ = ["Store", "StoreError"]
 class StoreError(TypeError): ...
 
 
-FORGOT_STATE_MSG_ERROR = """
+UPDATE_FORGOT_STATE_MSG_ERROR = """
 Les fonctions décorées par Store.update doivent prendre l'état de l'application en dernier argument.
 
 store = Store(...)
@@ -47,7 +55,7 @@ def callback(value, state):
 
 """
 
-NO_RETURN_MSG_ERROR = """
+UPDATE_NO_RETURN_MSG_ERROR = """
 Les fonctions décorées par Store.update ne doivent rien retourner et modifie l'état de l'application
 en mutant directement la variable state passé en argument :
 
@@ -58,6 +66,17 @@ input = dcc.Input(id=...)
 def callback(value, state):
     state.input.value = value
 
+"""
+
+ON_INIT_FORGOT_STATE_MSG_ERROR = """
+Les fonctions décorées par Store.on_init doivent prendre l'état de l'application en argument.
+
+store = Store(...)
+input = dcc.Input(id=...)
+
+@store.on_init(Output(input, 'value'))
+def callback(state: AppState):
+    return state.value
 """
 
 
@@ -86,10 +105,10 @@ class Store(html.Div):
 
         super().__init__([self._store])
 
-    def surrogates(self, idx: Idx | str) -> dcc.Store:
+    def surrogates(self, idx: Idx | str, **kwargs) -> DccStore:
         key = idx if isinstance(idx, str) else idx.immutable()
         if key not in self._surrogate_stores:
-            store = dcc.Store(id=idx)
+            store = DccStore(id=idx, **kwargs)
             self.children.append(store)
             self._surrogate_stores[key] = store
         else:
@@ -119,7 +138,7 @@ class Store(html.Div):
                 prevent_initial_call=prevent_initial_call,
                 **kwargs,
             )
-            def _(*args):
+            def nested_callback(*args):
                 args = list(args)
                 # Get the state as the last argument
                 # Act as clone and break any reference to the original object
@@ -127,17 +146,19 @@ class Store(html.Div):
                 try:
                     result = func(*args, state=state)
                     if result is not None:
-                        raise StoreError(NO_RETURN_MSG_ERROR)
+                        raise StoreError(UPDATE_NO_RETURN_MSG_ERROR)
                 except TypeError as e:
                     if "positional argument" in e.args[0]:
-                        raise StoreError(FORGOT_STATE_MSG_ERROR)
+                        raise StoreError(UPDATE_FORGOT_STATE_MSG_ERROR)
                     else:
                         raise e
                 return state.model_dump()
 
+            return wraps(func)(nested_callback)
+
         return wrapper
 
-    def update_clientside(
+    def clientside_update(
         self, clientside_function: str, *inputs: Input | State, **kwargs
     ):
         prevent_initial_call = kwargs.pop("prevent_initial_call", True)
@@ -163,15 +184,60 @@ class Store(html.Div):
             *inputs,
             self.state,
             prevent_initial_call=prevent_initial_call,
+            **kwargs,
         )
 
-    def on_init(self, dependency: DashDependency, **kwargs):
+    def on_init(self, output: Output, **kwargs):
         prevent_initial_call = kwargs.pop("prevent_initial_call", False)
 
-        idx = Idx(type="init_store").idx((dependency,))
-        output = Output(dependency.component_id, dependency.component_property)
+        idx = Idx(type="init_store").idx((output,))
+        store = self.surrogates(idx, storage_type="memory", data=True)
 
-        def wrapper(func):
-            pass
+        # output = Output(output.component_id, output.component_property)
+
+        def wrapper(func: Callable[[T], Any]):
+            @callback(
+                output,
+                store.output,
+                store.input,
+                self.state,
+                prevent_initial_call=prevent_initial_call,
+                **kwargs,
+            )
+            def nested_callback(on_init: bool, state: dict):
+                if on_init:
+                    state = self._state_factory(**state)
+                    result = func(state)
+                    return result, False
+                else:
+                    return no_update, False
+
+            return wraps(func)(nested_callback)
 
         return wrapper
+
+    def clientside_init(self, clientside_function: str, output: Output, **kwargs):
+        prevent_initial_call = kwargs.pop("prevent_initial_call", False)
+        idx = Idx(type="init_store").idx((output,))
+        store = self.surrogates(idx, storage_type="memory", data=True)
+
+        js_template = """
+        function(on_init, state) {{
+            if (on_init) {{
+                callback = {clientside_function};
+                result = callback(state)
+                return [result, false];
+            }} else {{
+                return [window.dash_clientside.no_update, false]; 
+            }}
+        }}
+        """
+        clientside_callback(
+            js_template.format(clientside_function=clientside_function),
+            output,
+            store.output,
+            store.input,
+            self.state,
+            prevent_initial_call=prevent_initial_call,
+            **kwargs,
+        )

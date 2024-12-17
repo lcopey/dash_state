@@ -31,4 +31,7 @@ Les valeurs passées par défault peuvent être des valeurs mutables également
 
 >>> AppState()
 AppState(value=InnerState(nested_sequence=[]))
+
+>>> AppState(**dict(value=dict(nested_sequence=list())))
+AppState(value=InnerState(nested_sequence=[]))
 """
