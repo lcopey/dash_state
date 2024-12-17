@@ -9,7 +9,7 @@ Div([Store(id='store', data={'value': ''}, storage_type='session')])
 <Input `store.data`>
 >>> master_store.state
 <State `store.data`>
->>> master_store.surrogates(Input('input', 'value'))
+>>> master_store.surrogates(Idx(type='surrogate').idx((Input('input', 'value'),)))
 Store(id=Idx(type='surrogate', idx='70e842a92a447f0653f79bf869a2e550166134b03bc759d8d61b1a9a1a06958c'))
 >>> master_store
 Div([Store(id='store', data={'value': ''}, storage_type='session'),
@@ -17,15 +17,14 @@ Store(id=Idx(type='surrogate', idx='70e842a92a447f0653f79bf869a2e550166134b03bc7
 
 """
 
-from collections.abc import Hashable
-
 from dash import html, dcc, Output, Input, State, callback, clientside_callback
+from dash.dependencies import DashDependency
 from dash_state.base_state import BaseState
-import orjson
-from hashlib import sha256
+
 from typing import Literal, Callable, TypeVar
 from .idx import Idx
-from .izy_component import DccStore
+from .fast_dependencies import DccStore
+from functools import wraps
 
 T = TypeVar("T", bound=BaseState)
 
@@ -61,43 +60,6 @@ def callback(value, state):
 """
 
 
-def _hash_inputs(*args: Input | State) -> Hashable:
-    """
-    >>> from dash import ALL, MATCH, ALLSMALLER
-    >>> _hash_inputs(Input('input', 'value'))
-    '70e842a92a447f0653f79bf869a2e550166134b03bc759d8d61b1a9a1a06958c'
-    >>> _hash_inputs(Input('input', 'value'), State('store', 'data'))
-    'cb61779d9e17f4ea19e28ecbf9d8859626c981fb7ad8da75f158810529e109c5'
-    >>> _hash_inputs(Input({'type': 'input', 'subtype': 'value'}, 'value'))
-    'ec49e72fff678b546ff3c27d8de7154827b9c1eff4cd5dfcbc07fb89235f6487'
-    >>> _hash_inputs(Input({'type': 'input', 'index': ALL}, 'value'))
-    '70e842a92a447f0653f79bf869a2e550166134b03bc759d8d61b1a9a1a06958c'
-
-    Args:
-        *args:
-
-    Returns:
-
-    """
-    to_hash = []
-    for arg in args:
-        if isinstance(arg.component_id, dict):
-            id_ = "_".join(
-                value
-                for value in arg.component_id.values()
-                if isinstance(
-                    value, str
-                )  # permet d'ignorer les flags ALL, MATCH, etc...
-            )
-        else:
-            id_ = arg.component_id
-
-        property_ = arg.component_property
-        to_hash.append(".".join((id_, property_)))
-    hash_ = sha256(orjson.dumps(tuple(to_hash))).hexdigest()
-    return hash_
-
-
 class Store(html.Div):
     def __init__(
         self,
@@ -124,16 +86,15 @@ class Store(html.Div):
 
         super().__init__([self._store])
 
-    # def surrogates(self, *args: Input | State, idx: str | None = None) -> dcc.Store:
-    #     if idx is None:
-    #         idx = _hash_inputs(*args)
-    #     if idx not in self._surrogate_stores:
-    #         store = dcc.Store(id=self._surrogate_stores_idx.idx(idx))
-    #         self.children.append(store)
-    #         self._surrogate_stores[idx] = store
-    #     else:
-    #         store = self._surrogate_stores[idx]
-    #     return store
+    def surrogates(self, idx: Idx | str) -> dcc.Store:
+        key = idx if isinstance(idx, str) else idx.immutable()
+        if key not in self._surrogate_stores:
+            store = dcc.Store(id=idx)
+            self.children.append(store)
+            self._surrogate_stores[key] = store
+        else:
+            store = self._surrogate_stores[key]
+        return store
 
     @property
     def input(self):
@@ -202,3 +163,14 @@ class Store(html.Div):
             self.state,
             prevent_initial_call=prevent_initial_call,
         )
+
+    def on_init(self, dependency: DashDependency, **kwargs):
+        prevent_initial_call = kwargs.pop("prevent_initial_call", False)
+
+        idx = Idx(type="init_store").idx((dependency,))
+        output = Output(dependency.component_id, dependency.component_property)
+
+        def wrapper(func):
+            pass
+
+        return wrapper
