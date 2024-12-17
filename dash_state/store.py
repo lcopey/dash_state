@@ -1,5 +1,6 @@
 """
->>> class AppState(BaseState):
+>>> from pydantic import BaseModel
+>>> class AppState(BaseModel):
 ...     value: str = ''
 
 >>> master_store = Store(id='store', state_factory=AppState)
@@ -19,14 +20,14 @@ Store(id=Idx(type='surrogate', idx='70e842a92a447f0653f79bf869a2e550166134b03bc7
 
 from dash import html, dcc, Output, Input, State, callback, clientside_callback
 from dash.dependencies import DashDependency
-from dash_state.base_state import BaseState
+from pydantic import BaseModel
 
 from typing import Literal, Callable, TypeVar
 from .idx import Idx
 from .fast_dependencies import DccStore
 from functools import wraps
 
-T = TypeVar("T", bound=BaseState)
+T = TypeVar("T", bound=BaseModel)
 
 __all__ = ["Store", "StoreError"]
 
@@ -72,9 +73,9 @@ class Store(html.Div):
         self._storage_type = storage_type
 
         if data is None:
-            data = self._state_factory().to_dict()
-        elif isinstance(data, BaseState):
-            data = data.to_dict()
+            data = self._state_factory().model_dump()
+        elif isinstance(data, BaseModel):
+            data = data.model_dump()
 
         if not isinstance(data, dict):
             raise TypeError(
@@ -82,7 +83,6 @@ class Store(html.Div):
             )
         self._store = DccStore(id=id, data=data, storage_type=storage_type)
         self._surrogate_stores: dict[str, dcc.Store] = dict()
-        # self._surrogate_stores_idx = Idx(type='surrogate')
 
         super().__init__([self._store])
 
@@ -121,8 +121,9 @@ class Store(html.Div):
             )
             def _(*args):
                 args = list(args)
+                # Get the state as the last argument
                 # Act as clone and break any reference to the original object
-                state = self._state_factory.from_dict(args.pop())
+                state = self._state_factory(**args.pop())
                 try:
                     result = func(*args, state=state)
                     if result is not None:
@@ -132,7 +133,7 @@ class Store(html.Div):
                         raise StoreError(FORGOT_STATE_MSG_ERROR)
                     else:
                         raise e
-                return state.to_dict()
+                return state.model_dump()
 
         return wrapper
 

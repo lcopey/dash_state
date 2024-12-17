@@ -1,4 +1,5 @@
-from dash_state import BaseState, Store, DccInput
+from dash_state import Store, DccInput
+from pydantic import BaseModel
 from dash import html, Dash, Output, callback
 import sys
 from typing import TYPE_CHECKING
@@ -10,7 +11,7 @@ sys.path.append("/usr/laurent/Téléchargements/")
 
 
 def make_app(clientside: bool = False, n_input: int = 1) -> Dash:
-    class AppState(BaseState):
+    class AppState(BaseModel):
         value: str = ""
 
     inputs = [DccInput(id=f"input{n}", value="") for n in range(n_input)]
