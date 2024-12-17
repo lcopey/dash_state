@@ -1,4 +1,4 @@
-from dash import dcc, Input, State, Output
+from dash import dcc, html, Input, State, Output
 from dash.dependencies import DashDependency
 
 
@@ -40,6 +40,26 @@ class DccStore(dcc.Store):
 
 class DccInput(dcc.Input):
     _property = "value"
+
+    @property
+    def input(self):
+        return Input(self, self._property)
+
+    @property
+    def output(self):
+        return Output(self, self._property)
+
+    @property
+    def state(self):
+        return State(self, self._property)
+
+    @property
+    def component(self):
+        return DashDependency(self, self._property)
+
+
+class DccLabel(html.Label):
+    _property = "children"
 
     @property
     def input(self):

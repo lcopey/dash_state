@@ -1,5 +1,3 @@
-from dash.testing.plugin import dash_duo
-
 from dash_state import Store, DccInput
 from pydantic import BaseModel
 from dash import html, Dash, Output, callback
@@ -20,10 +18,7 @@ def make_app(clientside: bool = False):
         value: str = ""
 
     input_ = DccInput(id=f"input", value="")
-    store = Store(
-        id="store",
-        state_factory=AppState,
-    )
+    store = Store(id="store", state_factory=AppState)
     store_preview = html.Label(id="store_preview")
     layout = [html.H1("Application de base"), input_, store, store_preview]
 
@@ -33,7 +28,7 @@ def make_app(clientside: bool = False):
 
     if not clientside:
 
-        @store.on_init(input_.output)
+        @store.init(input_.output)
         def init_input(state: AppState):
             return state.value
     else:

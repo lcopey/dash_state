@@ -33,6 +33,8 @@ from pydantic import BaseModel
 from typing import Literal, Callable, TypeVar, Any
 from .idx import Idx
 from .fast_dependencies import DccStore
+from .proxy import Proxy
+from .utils import filter_input, filter_state, filter_output
 from functools import wraps
 
 T = TypeVar("T", bound=BaseModel)
@@ -77,6 +79,17 @@ input = dcc.Input(id=...)
 @store.on_init(Output(input, 'value'))
 def callback(state: AppState):
     return state.value
+"""
+
+LISTEN_ON_FORGOT_INPUT_MSG_ERROR = """
+Les fonctions décorées par Store.listen_on doivent prendre la valeur surveillée en premier argument.
+
+store = Store(...)
+input = dcc.Input(id=...)
+
+@store.listen_on(store.proxy_path.value, Output(input, 'value'))
+def callback(value: str):
+    ...
 """
 
 
@@ -187,19 +200,17 @@ class Store(html.Div):
             **kwargs,
         )
 
-    def on_init(self, output: Output, **kwargs):
+    def init(self, output: Output, **kwargs):
         prevent_initial_call = kwargs.pop("prevent_initial_call", False)
 
         idx = Idx(type="init_store").idx((output,))
-        store = self.surrogates(idx, storage_type="memory", data=True)
-
-        # output = Output(output.component_id, output.component_property)
+        surrogate = self.surrogates(idx, storage_type="memory", data=True)
 
         def wrapper(func: Callable[[T], Any]):
             @callback(
                 output,
-                store.output,
-                store.input,
+                surrogate.output,
+                surrogate.input,
                 self.state,
                 prevent_initial_call=prevent_initial_call,
                 **kwargs,
@@ -207,7 +218,13 @@ class Store(html.Div):
             def nested_callback(on_init: bool, state: dict):
                 if on_init:
                     state = self._state_factory(**state)
-                    result = func(state)
+                    try:
+                        result = func(state)
+                    except TypeError as e:
+                        if "positional argument" in e.args[0]:
+                            raise StoreError(ON_INIT_FORGOT_STATE_MSG_ERROR)
+                        else:
+                            raise e
                     return result, False
                 else:
                     return no_update, False
@@ -219,7 +236,7 @@ class Store(html.Div):
     def clientside_init(self, clientside_function: str, output: Output, **kwargs):
         prevent_initial_call = kwargs.pop("prevent_initial_call", False)
         idx = Idx(type="init_store").idx((output,))
-        store = self.surrogates(idx, storage_type="memory", data=True)
+        surrogate = self.surrogates(idx, storage_type="memory", data=True)
 
         js_template = """
         function(on_init, state) {{
@@ -235,9 +252,106 @@ class Store(html.Div):
         clientside_callback(
             js_template.format(clientside_function=clientside_function),
             output,
-            store.output,
-            store.input,
+            surrogate.output,
+            surrogate.input,
             self.state,
+            prevent_initial_call=prevent_initial_call,
+            **kwargs,
+        )
+
+    @property
+    def path_proxy(self) -> Proxy[T]:
+        return Proxy(self._state_factory)
+
+    def listen_on(self, path: Proxy[T], *dependencies: DashDependency, **kwargs):
+        prevent_initial_call = kwargs.pop("prevent_initial_call", True)
+        idx = Idx(type="surrogate").idx("-".join(path))
+        surrogate_store = self.surrogates(idx, storage_type="memory")
+
+        # Callback alimentant un surrogate store à partir de l'attribut placé dans path
+        clientside_callback(
+            f"""
+            function(state) {{
+                let result = state;
+                for (const subpath of [{', '.join(map(lambda x: f'{x!r}', path))}]) {{
+                    result = result[subpath];
+                }}
+                return result;
+            }}
+            """,
+            surrogate_store.output,
+            self.input,
+            prevent_initial_call=prevent_initial_call,  # TODO vérifier si c'est bien le comportement voulu
+        )
+
+        outputs = filter_output(*dependencies)
+        inputs = filter_input(*dependencies)
+        states = filter_state(*dependencies)
+
+        def wrapper(func):
+            @callback(
+                *outputs,
+                surrogate_store.input,
+                *inputs,
+                *states,
+                prevent_initial_call=prevent_initial_call,
+                **kwargs,
+            )
+            def nested_callback(*args):
+                try:
+                    args = list(args)
+                    state = args.pop(0)
+                    if path.state_factory and not isinstance(state, path.state_factory):
+                        state = path.state_factory(**state)
+                    result = func(state, *args)
+                except TypeError as e:
+                    if "positional argument" in e.args[0]:
+                        raise StoreError(LISTEN_ON_FORGOT_INPUT_MSG_ERROR)
+                    else:
+                        raise e
+                return result
+
+            return nested_callback
+
+        return wrapper
+
+    def clientside_listen_on(
+        self,
+        clientside_function: str,
+        path: Proxy[T],
+        *dependencies: DashDependency,
+        **kwargs,
+    ):
+        prevent_initial_call = kwargs.pop("prevent_initial_call", True)
+        idx = Idx(type="surrogate").idx("-".join(path))
+        surrogate_store = self.surrogates(idx, storage_type="memory")
+
+        # Callback alimentant un surrogate store à partir de l'attribut placé dans path
+        clientside_callback(
+            f"""
+            function(state) {{
+                let result = state;
+                for (const subpath of [{', '.join(map(lambda x: f'{x!r}', path))}]) {{
+                    result = result[subpath];
+                }}
+                return result;
+            }}
+            """,
+            surrogate_store.output,
+            self.input,
+            prevent_initial_call=prevent_initial_call,  # TODO vérifier si c'est bien le comportement voulu
+        )
+
+        outputs = filter_output(*dependencies)
+        inputs = filter_input(*dependencies)
+        states = filter_state(*dependencies)
+
+        clientside_callback(
+            clientside_function,
+            *outputs,
+            surrogate_store.input,
+            *inputs,
+            *states,
             prevent_initial_call=prevent_initial_call,
             **kwargs,
         )
