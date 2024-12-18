@@ -1,10 +1,12 @@
+import time
+
 from dash_state import Store, DccInput, DccLabel
 from pydantic import BaseModel
 from dash import html, Dash
 import sys
 from typing import TYPE_CHECKING
 
-from .utils import random_string
+from dash_state.tests.utils import random_string
 
 if TYPE_CHECKING:
     from dash.testing.composite import DashComposite
@@ -13,10 +15,10 @@ sys.path.append("/usr/laurent/Téléchargements/")
 
 
 def make_app(clientside: bool = False, nested: bool = False):
-    if nested:
+    class InputState(BaseModel):
+        value: str = ""
 
-        class InputState(BaseModel):
-            value: str = ""
+    if nested:
 
         class AppState(BaseModel):
             input_: InputState = InputState()

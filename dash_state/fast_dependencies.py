@@ -1,5 +1,7 @@
 from dash import dcc, html, Input, State, Output
 from dash.dependencies import DashDependency
+from dash.development.base_component import Component
+from dataclasses import dataclass
 
 
 # class _IzyComponent:
@@ -76,3 +78,34 @@ class DccLabel(html.Label):
     @property
     def component(self):
         return DashDependency(self, self._property)
+
+
+class DccButton(html.Button):
+    @dataclass
+    class _ProxyDependency:
+        dependency_type: type[DashDependency]
+        component_id: str | dict | Component
+
+        @property
+        def n_clicks(self):
+            return self.dependency_type(self.component_id, "n_clicks")
+
+        @property
+        def children(self):
+            return self.dependency_type(self.component_id, "children")
+
+        @property
+        def disabled(self):
+            return self.dependency_type(self.component_id, "disabled")
+
+    @property
+    def input(self):
+        return self._ProxyDependency(Input, self)
+
+    @property
+    def output(self):
+        return self._ProxyDependency(Output, self)
+
+    @property
+    def state(self):
+        return self._ProxyDependency(State, self)

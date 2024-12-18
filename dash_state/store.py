@@ -28,7 +28,7 @@ from dash import (
     no_update,
 )
 from dash.dependencies import DashDependency
-from pydantic import BaseModel
+from pydantic import BaseModel, TypeAdapter
 
 from typing import Literal, Callable, TypeVar, Any
 from .idx import Idx
@@ -105,9 +105,12 @@ class Store(html.Div):
         self._storage_type = storage_type
 
         if data is None:
-            data = self._state_factory().model_dump()
+            self._default_data = self._state_factory()
         elif isinstance(data, BaseModel):
-            data = data.model_dump()
+            self._default_data = data
+
+        if data is None:
+            data = self._default_data.model_dump()
 
         if not isinstance(data, dict):
             raise TypeError(
@@ -264,9 +267,19 @@ class Store(html.Div):
         return Proxy(self._state_factory)
 
     def listen_on(self, path: Proxy[T], *dependencies: DashDependency, **kwargs):
+        # TODO vérifier si c'est bien le comportement voulu
         prevent_initial_call = kwargs.pop("prevent_initial_call", True)
         idx = Idx(type="surrogate").idx("-".join(path))
-        surrogate_store = self.surrogates(idx, storage_type="memory")
+
+        # TODO initialise le surrogate store avec la valeur de l'état initial ?
+        # TODO prevent_initial_call est mis à True, donc on initialise.
+        init = self._default_data
+        for sub_path in path:
+            init = getattr(init, sub_path)
+        if isinstance(init, BaseModel):
+            init = init.model_dump()
+
+        surrogate_store = self.surrogates(idx, storage_type="memory", data=init)
 
         # Callback alimentant un surrogate store à partir de l'attribut placé dans path
         clientside_callback(
@@ -281,7 +294,7 @@ class Store(html.Div):
             """,
             surrogate_store.output,
             self.input,
-            prevent_initial_call=prevent_initial_call,  # TODO vérifier si c'est bien le comportement voulu
+            prevent_initial_call=prevent_initial_call,
         )
 
         outputs = filter_output(*dependencies)
@@ -301,8 +314,9 @@ class Store(html.Div):
                 try:
                     args = list(args)
                     state = args.pop(0)
-                    if path.state_factory and not isinstance(state, path.state_factory):
-                        state = path.state_factory(**state)
+                    # if path.model and not isinstance(state, path.model):
+                    if path.model:
+                        state = TypeAdapter(path.model).validate_python(state)
                     result = func(state, *args)
                 except TypeError as e:
                     if "positional argument" in e.args[0]:
@@ -324,7 +338,16 @@ class Store(html.Div):
     ):
         prevent_initial_call = kwargs.pop("prevent_initial_call", True)
         idx = Idx(type="surrogate").idx("-".join(path))
-        surrogate_store = self.surrogates(idx, storage_type="memory")
+
+        # TODO initialise le surrogate store avec la valeur de l'état initial ?
+        # TODO prevent_initial_call est mis à True, donc on initialise.
+        init = self._default_data
+        for sub_path in path:
+            init = getattr(init, sub_path)
+        if isinstance(init, BaseModel):
+            init = init.model_dump()
+
+        surrogate_store = self.surrogates(idx, storage_type="memory", data=init)
 
         # Callback alimentant un surrogate store à partir de l'attribut placé dans path
         clientside_callback(
