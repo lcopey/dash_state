@@ -26,13 +26,16 @@ def make_app(clientside: bool = False, n_input: int = 1) -> Dash:
         def on_input_change(*values: str, state: AppState):
             change = "".join(values)
             state.value = change
+            return state
     else:
         signature = ", ".join([f"arg{n}" for n in range(n_input)])
         function_eval = f"''.concat({signature})"
 
         signature += ", state"
         store.clientside_update(
-            f"({signature}) => state.value = {function_eval};",
+            f"({signature}) => {{"
+            f"  state.value = {function_eval};"
+            f"  return state;}}",
             *(input_.input for input_ in inputs),
         )
 
@@ -59,7 +62,7 @@ def assert_store_update(
     # does not work...
     # assert dash_duo.get_logs() == [], "browser console should contain no error"
 
-    dash_duo.wait_for_text_to_equal("#store_preview", expected, timeout=30)
+    dash_duo.wait_for_text_to_equal("#store_preview", expected, timeout=4)
     assert (
         dash_duo.find_element("#store_preview").text == expected
     ), "store has not been updated"

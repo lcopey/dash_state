@@ -113,6 +113,10 @@ def callback(
             if not isinstance(results, dict):
                 raise CallbackError(CALLBACK_ERROR_RETURN_DICT_MSG)
 
-            return [results[k] for k in targets.keys()]
+            results = [results[k] for k in targets.keys()]
+            if len(targets) == 1:
+                return results[0]
+            else:
+                return results
 
     return wrapper

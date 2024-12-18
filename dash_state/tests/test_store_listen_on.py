@@ -38,6 +38,7 @@ def make_app(clientside: bool = False, nested: bool = False):
             state.input_.value = value
         else:
             state.value = value
+        return state
 
     if clientside and not nested:
         store.clientside_listen_on(

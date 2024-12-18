@@ -16,6 +16,7 @@ def make_app() -> Dash:
     @store.update(input_.input)
     def on_input_change(value: str, state: AppState):
         state.value = value
+        return state
 
     # store.clientside_update(
     #     "(arg0, state) => state.value = '.'.concat(arg0);",

@@ -57,16 +57,19 @@ def callback(value, state):
 
 """
 
-UPDATE_NO_RETURN_MSG_ERROR = """
-Les fonctions décorées par Store.update ne doivent rien retourner et modifie l'état de l'application
-en mutant directement la variable state passé en argument :
+UPDATE_WRONG_RETURN_MSG_ERROR = """
+Les fonctions décorées par Store.update doivent retourner une instance de l'état de l'application uniquement :
 
-store = Store(...)
+class AppState(BaseModel):
+    ...
+
+store = Store(state_factory=AppState, ...)
 input = dcc.Input(id=...)
 
 @store.update(Input(input, 'value')
-def callback(value, state):
+def callback(value, state: AppState):
     state.input.value = value
+    return state
 
 """
 
@@ -161,8 +164,8 @@ class Store(html.Div):
                 state = self._state_factory(**args.pop())
                 try:
                     result = func(*args, state=state)
-                    if result is not None:
-                        raise StoreError(UPDATE_NO_RETURN_MSG_ERROR)
+                    if not isinstance(result, self._state_factory):
+                        raise StoreError(UPDATE_WRONG_RETURN_MSG_ERROR)
                 except TypeError as e:
                     if "positional argument" in e.args[0]:
                         raise StoreError(UPDATE_FORGOT_STATE_MSG_ERROR)
@@ -184,7 +187,7 @@ class Store(html.Div):
                 clone = (state) => JSON.parse(JSON.stringify(state));
                 state = clone(state);
                 callback = {clientside_function};
-                callback({signature});
+                state = callback({signature});
                 return state;
             }}
         """
@@ -314,7 +317,6 @@ class Store(html.Div):
                 try:
                     args = list(args)
                     state = args.pop(0)
-                    # if path.model and not isinstance(state, path.model):
                     if path.model:
                         state = TypeAdapter(path.model).validate_python(state)
                     result = func(state, *args)

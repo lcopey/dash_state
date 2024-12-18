@@ -25,6 +25,7 @@ def make_app(clientside: bool = False):
     @store.update(input_.input)
     def on_input_change(value: str, state: AppState):
         state.value = value
+        return state
 
     if not clientside:
 
