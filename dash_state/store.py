@@ -300,9 +300,9 @@ class Store(html.Div):
             prevent_initial_call=prevent_initial_call,
         )
 
-        outputs = filter_output(*dependencies)
-        inputs = filter_input(*dependencies)
-        states = filter_state(*dependencies)
+        outputs = filter_output(dependencies)
+        inputs = filter_input(dependencies)
+        states = filter_state(dependencies)
 
         def wrapper(func):
             @callback(
@@ -367,9 +367,9 @@ class Store(html.Div):
             prevent_initial_call=prevent_initial_call,  # TODO vérifier si c'est bien le comportement voulu
         )
 
-        outputs = filter_output(*dependencies)
-        inputs = filter_input(*dependencies)
-        states = filter_state(*dependencies)
+        outputs = filter_output(dependencies)
+        inputs = filter_input(dependencies)
+        states = filter_state(dependencies)
 
         clientside_callback(
             clientside_function,

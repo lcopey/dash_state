@@ -14,7 +14,7 @@ def make_app():
     @callback(
         target=label.output,
         input=input_.state,
-        n_click=button.input.n_clicks,
+        n_clicks=button.input.n_clicks,
         prevent_initial_call=True,
     )
     def on_click(
